@@ -68,18 +68,25 @@ namespace phylanx { namespace execution_tree { namespace primitives {
 
     ///////////////////////////////////////////////////////////////////////////
     template <typename T>
-    primitive_argument_type conv2d_operation::calculate_conv2d(ir::node_data<T>&& arg, ir::node_data<T>&& kernel) const
+    primitive_argument_type conv2d_operation::calculate_conv2d(
+        ir::node_data<T>&& arg, ir::node_data<T>&& kernel) const
     {
         auto arg_m = arg.matrix();
         auto kernel_m = kernel.matrix();
+        blaze::DynamicMatrix<T> result(arg_m.rows() - kernel_m.rows() + 1,
+            arg_m.columns() - kernel_m.columns() + 1, 0);
 
-        for (std::size_t i=0; i<arg_m.columns()-kernel_m.columns()+1; ++i)
+        for (std::size_t i = 0; i < arg_m.rows() - kernel_m.rows() + 1; ++i)
         {
-            auto tmp = blaze::submatrix(arg_m, 0UL, 0UL, kernel_m.rows(), kernel_m.columns());
+            for (std::size_t j = 0;
+                 j < arg_m.columns() - kernel_m.columns() + 1; ++j)
+            {
+                auto tmp = blaze::submatrix(
+                    arg_m, i, j, kernel_m.rows(), kernel_m.columns());
+                result(i, j) = blaze::sum(tmp % kernel_m);
+            }
         }
-        blaze::DynamicMatrix<T> result(arg.matrix());
         return primitive_argument_type{result};
-
     }
 
     ///////////////////////////////////////////////////////////////////////////
@@ -116,48 +123,46 @@ namespace phylanx { namespace execution_tree { namespace primitives {
                 std::size_t ndim_data = extract_numeric_value_dimension(
                     args[0], this_->name_, this_->codename_);
                 std::size_t ndim_kernel = extract_numeric_value_dimension(
-                        args[1], this_->name_, this_->codename_);
-                if ( ndim_data != 2 || ndim_kernel !=2 ) {
+                    args[1], this_->name_, this_->codename_);
+                if (ndim_data != 2 || ndim_kernel != 2)
+                {
                     HPX_THROW_EXCEPTION(hpx::bad_parameter,
-                                        "conv2d_operation::eval",
-                                        this_->generate_error_message(
-                                                "the conv2d_operation primitive requires that the "
-                                                "data and kernel are 2D"));
+                        "conv2d_operation::eval",
+                        this_->generate_error_message(
+                            "the conv2d_operation primitive requires that the "
+                            "data and kernel are 2D"));
                 }
 
                 switch (extract_common_type(args[0]))
                 {
-                    case node_data_type_bool:
-                        return this_->calculate_conv2d(
-                                extract_boolean_value(std::move(args[0]),
-                                                      this_->name_, this_->codename_),
-                                extract_boolean_value(std::move(args[1]),
-                                                      this_->name_, this_->codename_));
+                case node_data_type_bool:
+                    return this_->calculate_conv2d(
+                        extract_boolean_value(
+                            std::move(args[0]), this_->name_, this_->codename_),
+                        extract_boolean_value(std::move(args[1]), this_->name_,
+                            this_->codename_));
 
-                    case node_data_type_int64:
-                        return this_->calculate_conv2d(
-                                extract_integer_value(std::move(args[0]),
-                                                      this_->name_, this_->codename_),
-                                extract_integer_value(std::move(args[1]),
-                                                      this_->name_, this_->codename_));
+                case node_data_type_int64:
+                    return this_->calculate_conv2d(
+                        extract_integer_value(
+                            std::move(args[0]), this_->name_, this_->codename_),
+                        extract_integer_value(std::move(args[1]), this_->name_,
+                            this_->codename_));
 
-                    case node_data_type_unknown:
-                        HPX_FALLTHROUGH;
-                    case node_data_type_double:
-                        return this_->calculate_conv2d(
-                                extract_numeric_value(std::move(args[0]),
-                                                      this_->name_, this_->codename_),
-                                extract_numeric_value(std::move(args[1]),
-                                                      this_->name_, this_->codename_));
+                case node_data_type_unknown:
+                    HPX_FALLTHROUGH;
+                case node_data_type_double:
+                    return this_->calculate_conv2d(
+                        extract_numeric_value(
+                            std::move(args[0]), this_->name_, this_->codename_),
+                        extract_numeric_value(std::move(args[1]), this_->name_,
+                            this_->codename_));
 
-                    default:
-                        HPX_THROW_EXCEPTION(hpx::bad_parameter,
-                                            "conv2d_operation::eval",
-                                            this_->generate_error_message(
-                                                    "type not supported"));
+                default:
+                    HPX_THROW_EXCEPTION(hpx::bad_parameter,
+                        "conv2d_operation::eval",
+                        this_->generate_error_message("type not supported"));
                 }
-
-
             }),
             detail::map_operands(operands, functional::value_operand{}, args,
                 name_, codename_, std::move(ctx)));
