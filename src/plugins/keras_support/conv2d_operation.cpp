@@ -71,6 +71,14 @@ namespace phylanx { namespace execution_tree { namespace primitives {
     primitive_argument_type conv2d_operation::calculate_conv2d(
         ir::node_data<T>&& arg, ir::node_data<T>&& kernel) const
     {
+        if (kernel.num_dimensions() != 2)
+        {
+            HPX_THROW_EXCEPTION(hpx::bad_parameter,
+                "conv2d_operation::calculate_conv2d",
+                generate_error_message(
+                    "the conv2d_operation primitive requires the "
+                    "kernel to be 2D"));
+        }
         auto arg_m = arg.matrix();
         auto kernel_m = kernel.matrix();
         blaze::DynamicMatrix<T> result(arg_m.rows() - kernel_m.rows() + 1,
@@ -79,7 +87,8 @@ namespace phylanx { namespace execution_tree { namespace primitives {
         for (std::size_t i = 0; i < arg_m.rows() - kernel_m.rows() + 1; ++i)
         {
             for (std::size_t j = 0;
-                 j < arg_m.columns() - kernel_m.columns() + 1; ++j)
+                 j < arg_m.columns() - kernel_m.columns() + 1;
+                 ++j)
             {
                 auto tmp = blaze::submatrix(
                     arg_m, i, j, kernel_m.rows(), kernel_m.columns());
@@ -89,6 +98,226 @@ namespace phylanx { namespace execution_tree { namespace primitives {
         return primitive_argument_type{result};
     }
 
+    template <typename T>
+    primitive_argument_type conv2d_operation::calculate_conv2d(
+        ir::node_data<T>&& arg, ir::node_data<T>&& kernel,
+        ir::range&& shape) const
+    {
+        if (kernel.num_dimensions() != 1)
+        {
+            HPX_THROW_EXCEPTION(hpx::bad_parameter,
+                "conv2d_operation::calculate_conv2d",
+                generate_error_message(
+                    "the kernel is not in the right format"));
+        }
+        if (shape.size() != 4)
+        {
+            HPX_THROW_EXCEPTION(hpx::bad_parameter,
+                "conv2d_operation::calculate_conv2d",
+                generate_error_message(
+                    "the shape should be in this format [filter_shape[0], "
+                    "filter_shape[1], num_input_channels,num_filters]"));
+        }
+
+        auto it = shape.begin();
+        auto filter_shape_0_r = extract_integer_value_strict(*it);
+        auto filter_shape_1_r = extract_integer_value_strict(*++it);
+        auto num_channels_r = extract_integer_value_strict(*++it);
+        auto num_filters_r = extract_integer_value_strict(*++it);
+        auto filter_shape_0 = filter_shape_0_r.scalar();
+        auto filter_shape_1 = filter_shape_1_r.scalar();
+        auto num_channels = num_channels_r.scalar();
+        auto num_filters = num_filters_r.scalar();
+
+        if (num_channels != 1)
+        {
+            HPX_THROW_EXCEPTION(hpx::bad_parameter,
+                "conv2d_operation::calculate_conv2d",
+                generate_error_message("number of channels should be one"));
+        }
+
+        auto arg_m = arg.matrix();
+        auto kernel_flattened = kernel.vector();
+        //shape:[filter_shape[0], filter_shape[1], num_input_channels,num_filters]
+
+        blaze::DynamicTensor<T> result(num_filters,
+            arg_m.rows() - filter_shape_0 + 1,
+            arg_m.columns() - filter_shape_1 + 1, 0);
+
+        for (std::size_t k = 0; k < num_filters; ++k)
+        {
+            blaze::CustomMatrix<T, blaze::unaligned, blaze::unpadded> slice(
+                &kernel_flattened[k * filter_shape_0 * filter_shape_1],
+                filter_shape_0, filter_shape_1);
+            for (std::size_t i = 0; i < result.rows(); ++i)
+            {
+                for (std::size_t j = 0; j < result.columns(); ++j)
+                {
+                    auto tmp = blaze::submatrix(
+                        arg_m, i, j, slice.rows(), slice.columns());
+
+                    result(k, i, j) = blaze::sum(tmp % tmp);
+                }
+            }
+        }
+        //output_shape=[num_filters,conv_size_row,conv_size_col]
+        return primitive_argument_type{std::move(result)};
+    }
+
+    template <typename T>
+    primitive_argument_type conv2d_operation::calculate_conv3d(
+        ir::node_data<T>&& arg, ir::node_data<T>&& kernel) const
+    {
+        if (kernel.num_dimensions() != 2)
+        {
+            HPX_THROW_EXCEPTION(hpx::bad_parameter,
+                "conv2d_operation::calculate_conv3d",
+                generate_error_message(
+                    "the conv2d_operation primitive requires the "
+                    "kernel to be 2D"));
+        }
+        //third dimension of the input is num_channels
+        auto arg_m = arg.matrix();
+        auto kernel_m = kernel.matrix();
+        blaze::DynamicMatrix<T> result(arg_m.rows() - kernel_m.rows() + 1,
+            arg_m.columns() - kernel_m.columns() + 1, 0);
+
+        for (std::size_t i = 0; i < arg_m.rows() - kernel_m.rows() + 1; ++i)
+        {
+            for (std::size_t j = 0;
+                 j < arg_m.columns() - kernel_m.columns() + 1;
+                 ++j)
+            {
+                auto tmp = blaze::submatrix(
+                    arg_m, i, j, kernel_m.rows(), kernel_m.columns());
+                result(i, j) = blaze::sum(tmp % kernel_m);
+            }
+        }
+        return primitive_argument_type{result};
+    }
+
+    template <typename T>
+    primitive_argument_type conv2d_operation::calculate_conv3d(
+        ir::node_data<T>&& arg, ir::node_data<T>&& kernel,
+        ir::range&& shape) const
+    {
+        if (kernel.num_dimensions() != 1)
+        {
+            HPX_THROW_EXCEPTION(hpx::bad_parameter,
+                "conv2d_operation::calculate_conv3d",
+                generate_error_message(
+                    "the kernel is not in the right format"));
+        }
+
+        if (shape.size() != 4)
+        {
+            HPX_THROW_EXCEPTION(hpx::bad_parameter,
+                "conv2d_operation::calculate_conv2d",
+                generate_error_message(
+                    "the shape shouyld be in this format [filter_shape[0], "
+                    "filter_shape[1], num_input_channels,num_filters]"));
+        }
+
+        auto it = shape.begin();
+        auto filter_shape_0_r = extract_integer_value_strict(*it);
+        auto filter_shape_1_r = extract_integer_value_strict(*++it);
+        auto num_channels_r = extract_integer_value_strict(*++it);
+        auto num_filters_r = extract_integer_value_strict(*++it);
+        auto filter_shape_0 = filter_shape_0_r.scalar();
+        auto filter_shape_1 = filter_shape_1_r.scalar();
+        auto num_channels = num_channels_r.scalar();
+        auto num_filters = num_filters_r.scalar();
+
+        auto arg_t = arg.tensor();
+        //assuming num_channels is the same for input and kernel
+        auto kernel_flattened = kernel.vector();
+
+        //shape:[filter_shape[0], filter_shape[1], num_input_channels,num_filters]
+        std::int64_t conv_size_row = arg_t.pages() - filter_shape_0 + 1;
+        std::int64_t conv_size_col = arg_t.rows() - filter_shape_1 + 1;
+        std::int64_t conv_size = conv_size_row * conv_size_col;
+
+        blaze::DynamicVector<T> result(num_filters * conv_size * num_channels);
+        for (std::size_t p = 0; p < num_filters; ++p)
+        {
+            for (std::size_t k = 0; k < num_channels; ++k)
+            {
+                auto start_index = k * conv_size;
+                auto end_index = (k + 1) * conv_size;
+                auto input_data = blaze::columnslice(arg_t, k);
+
+                blaze::CustomMatrix<T, blaze::unaligned, blaze::unpadded> slice(
+                    &kernel_flattened[p * num_channels +
+                        k * filter_shape_0 * filter_shape_1],
+                    filter_shape_0, filter_shape_1);
+
+                for (std::size_t i = 0; i < conv_size_row; ++i)
+                {
+                    for (std::size_t j = 0; j < conv_size_col; ++j)
+                    {
+                        auto tmp = blaze::submatrix(
+                            input_data, i, j, slice.rows(), slice.columns());
+
+                        result[k * conv_size * num_channels +
+                            i * conv_size_row + j] = blaze::sum(tmp % tmp);
+                    }
+                }
+            }
+        }
+
+        ir::range output_shape(primitive_arguments_type{
+            primitive_argument_type{std::move(num_filters)},
+            primitive_argument_type{std::move(num_channels)},
+            primitive_argument_type{std::move(conv_size_row)},
+            primitive_argument_type{std::move(conv_size_col)}});
+        //output_shape=[num_filters,conv_size_row,conv_size_col]
+        return primitive_argument_type{
+            primitive_arguments_type{primitive_argument_type{std::move(result)},
+                primitive_argument_type{std::move(output_shape)}}};
+    }
+
+    template <typename T>
+    primitive_argument_type conv2d_operation::calculate_conv(
+        ir::node_data<T>&& arg, ir::node_data<T>&& kernel) const
+    {
+        if (arg.num_dimensions() == 2)
+        {
+            return calculate_conv2d(std::move(arg), std::move(kernel));
+        }
+        else if (arg.num_dimensions() == 3)
+        {
+            return calculate_conv3d(std::move(arg), std::move(kernel));
+        }
+        else
+            HPX_THROW_EXCEPTION(hpx::bad_parameter,
+                "conv2d_operation::conv",
+                generate_error_message(
+                    "the conv2d_operation primitive requires "
+                    "between 2 and 5 operands"));
+    }
+
+    template <typename T>
+    primitive_argument_type conv2d_operation::calculate_conv(
+        ir::node_data<T>&& arg, ir::node_data<T>&& kernel,
+        ir::range&& shape) const
+    {
+        if (arg.num_dimensions() == 2)
+        {
+            return calculate_conv2d(
+                std::move(arg), std::move(kernel), std::move(shape));
+        }
+        else if (arg.num_dimensions() == 3)
+        {
+            return calculate_conv3d(
+                std::move(arg), std::move(kernel), std::move(shape));
+        }
+        else
+            HPX_THROW_EXCEPTION(hpx::bad_parameter,
+                "conv2d_operation::conv",
+                generate_error_message(
+                    "the conv2d_operation primitive requires "
+                    "between 2 and 5 operands"));
+    }
     ///////////////////////////////////////////////////////////////////////////
     hpx::future<primitive_argument_type> conv2d_operation::eval(
         primitive_arguments_type const& operands,
@@ -122,28 +351,61 @@ namespace phylanx { namespace execution_tree { namespace primitives {
                                       -> primitive_argument_type {
                 std::size_t ndim_data = extract_numeric_value_dimension(
                     args[0], this_->name_, this_->codename_);
-                std::size_t ndim_kernel = extract_numeric_value_dimension(
-                    args[1], this_->name_, this_->codename_);
-                if (ndim_data != 2 || ndim_kernel != 2)
-                {
-                    HPX_THROW_EXCEPTION(hpx::bad_parameter,
-                        "conv2d_operation::eval",
-                        this_->generate_error_message(
-                            "the conv2d_operation primitive requires that the "
-                            "data and kernel are 2D"));
-                }
 
+                if (is_list_operand_strict(args[1]))
+                {
+                    auto r = extract_list_value(
+                        args[1], this_->name_, this_->codename_);
+                    auto it = r.begin();
+                    auto kernel = *it;
+                    auto shape = *++it;
+                    switch (extract_common_type(args[0]))
+                    {
+                    case node_data_type_bool:
+                        return this_->calculate_conv(
+                            extract_boolean_value(std::move(args[0]),
+                                this_->name_, this_->codename_),
+                            extract_boolean_value(std::move(kernel),
+                                this_->name_, this_->codename_),
+                            extract_list_value(std::move(shape), this_->name_,
+                                this_->codename_));
+
+                    case node_data_type_int64:
+                        return this_->calculate_conv(
+                            extract_integer_value(std::move(args[0]),
+                                this_->name_, this_->codename_),
+                            extract_integer_value(std::move(kernel),
+                                this_->name_, this_->codename_),
+                            extract_list_value(std::move(shape), this_->name_,
+                                this_->codename_));
+                    case node_data_type_unknown:
+                        HPX_FALLTHROUGH;
+                    case node_data_type_double:
+                        return this_->calculate_conv(
+                            extract_numeric_value(std::move(args[0]),
+                                this_->name_, this_->codename_),
+                            extract_numeric_value(std::move(kernel),
+                                this_->name_, this_->codename_),
+                            extract_list_value(std::move(shape), this_->name_,
+                                this_->codename_));
+                    default:
+                        HPX_THROW_EXCEPTION(hpx::bad_parameter,
+                            "conv2d_operation::eval",
+                            this_->generate_error_message(
+                                "type not supported"));
+                    }
+                }
                 switch (extract_common_type(args[0]))
                 {
                 case node_data_type_bool:
-                    return this_->calculate_conv2d(
+                    return this_->calculate_conv(
                         extract_boolean_value(
                             std::move(args[0]), this_->name_, this_->codename_),
                         extract_boolean_value(std::move(args[1]), this_->name_,
                             this_->codename_));
 
                 case node_data_type_int64:
-                    return this_->calculate_conv2d(
+                    return this_->calculate_conv(
                         extract_integer_value(
                             std::move(args[0]), this_->name_, this_->codename_),
                         extract_integer_value(std::move(args[1]), this_->name_,
@@ -152,12 +414,11 @@ namespace phylanx { namespace execution_tree { namespace primitives {
                 case node_data_type_unknown:
                     HPX_FALLTHROUGH;
                 case node_data_type_double:
-                    return this_->calculate_conv2d(
+                    return this_->calculate_conv(
                         extract_numeric_value(
                             std::move(args[0]), this_->name_, this_->codename_),
                         extract_numeric_value(std::move(args[1]), this_->name_,
                             this_->codename_));
-
                 default:
                     HPX_THROW_EXCEPTION(hpx::bad_parameter,
                         "conv2d_operation::eval",

@@ -21,44 +21,62 @@
 #include <vector>
 
 namespace phylanx { namespace execution_tree { namespace primitives {
-/// \brief returns 2D convoltion
-/// \param x              a tensor
-/// \param kernel         a tensor, the filter
-/// \param padding        Padding mode, either `valid`, `same` or `causal`
-/// \param strides        The step to apply convolution
-/// \param dilation_rate  The rate to sample x in each step
+    /// \brief returns 2D convoltion
+    /// \param x              a tensor
+    /// \param kernel         a tensor, the filter
+    /// \param padding        Padding mode, either `valid`, `same` or `causal`
+    /// \param strides        The step to apply convolution
+    /// \param dilation_rate  The rate to sample x in each step
 
-            class conv2d_operation
-                    : public primitive_component_base
-                            , public std::enable_shared_from_this<conv2d_operation>
-            {
-            protected:
-                hpx::future<primitive_argument_type> eval(
-                        primitive_arguments_type const& operands,
-                        primitive_arguments_type const& args,
-                        eval_context ctx) const override;
+    class conv2d_operation
+      : public primitive_component_base
+      , public std::enable_shared_from_this<conv2d_operation>
+    {
+    protected:
+        hpx::future<primitive_argument_type> eval(
+            primitive_arguments_type const& operands,
+            primitive_arguments_type const& args,
+            eval_context ctx) const override;
 
-            public:
-                static match_pattern_type const match_data;
+    public:
+        static match_pattern_type const match_data;
 
-                conv2d_operation() = default;
+        conv2d_operation() = default;
 
-                conv2d_operation(primitive_arguments_type&& operands,
-                                 std::string const& name, std::string const& codename);
+        conv2d_operation(primitive_arguments_type&& operands,
+            std::string const& name, std::string const& codename);
 
-            private:
-                template <typename T>
-                primitive_argument_type calculate_conv2d(ir::node_data<T>&& arg, ir::node_data<T>&& kernel) const;
+    private:
+        template <typename T>
+        primitive_argument_type calculate_conv2d(
+            ir::node_data<T>&& arg, ir::node_data<T>&& kernel) const;
+        template <typename T>
+        primitive_argument_type calculate_conv2d(ir::node_data<T>&& arg,
+            ir::node_data<T>&& kernel,
+            ir::range&& shape) const;
+        template <typename T>
+        primitive_argument_type calculate_conv3d(
+            ir::node_data<T>&& arg, ir::node_data<T>&& kernel) const;
+        template <typename T>
+        primitive_argument_type calculate_conv3d(ir::node_data<T>&& arg,
+            ir::node_data<T>&& kernel,
+            ir::range&& shape) const;
+        template <typename T>
+        primitive_argument_type calculate_conv(ir::node_data<T>&& arg,
+            ir::node_data<T>&& kernel) const;
+        template <typename T>
+        primitive_argument_type calculate_conv(ir::node_data<T>&& arg,
+            ir::node_data<T>&& kernel,
+            ir::range&& shape) const;
+    };
 
-            };
-
-            inline primitive create_conv2d_operation(hpx::id_type const& locality,
-                                                     primitive_arguments_type&& operands, std::string const& name = "",
-                                                     std::string const& codename = "")
-            {
-                return create_primitive_component(
-                        locality, "conv2d", std::move(operands), name, codename);
-            }
-        }}}
+    inline primitive create_conv2d_operation(hpx::id_type const& locality,
+        primitive_arguments_type&& operands, std::string const& name = "",
+        std::string const& codename = "")
+    {
+        return create_primitive_component(
+            locality, "conv2d", std::move(operands), name, codename);
+    }
+}}}
 
 #endif
