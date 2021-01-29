@@ -9,8 +9,10 @@ file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
 """
 
 import ast
+import inspect
 
 from abc import ABC
+from typing import Any
 
 from physl.control import Task
 from physl.transformations import Transpiler
@@ -114,20 +116,19 @@ class FunctionCall(Function):
     pass
 
 
-class FunctionDef(Function):
-    pass
-
-
 class PhySL(Transpiler):
     def transpile(self, node):
-        self.target = super().transpile(node)
+        self.target = super().visit_(node)
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
-        print("DEFINGGG")
-        return 1
+        args_specs = inspect.getfullargspec(self.task.fn)
+        fn_params = args_specs.args
+
+        fn_name = node.name
+
 
     def visit_Module(self, node: ast.Module) -> str:
-        return self.transpile(node.body[0])
+        return self.visit_(node.body[0])
 
-    def __call__(self, *args: Any, **kwds: Any) -> Any:
-        return self.task(*args, **kwds)
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        return self.task(*args, **kwargs)

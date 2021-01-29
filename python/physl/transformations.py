@@ -12,18 +12,22 @@ import ast
 
 from abc import ABC, abstractmethod
 
+from physl.control import Task
 
 class Transpiler(ABC, ast.NodeVisitor):
     def __init__(self, task: Task) -> None:
         self.task = task
         self.py_ast = task.py_ast
-        self.target = self.transpile(self.py_ast)
+        self.transpile(self.py_ast)
 
     @abstractmethod
     def transpile(self, node):
-        returned = self.visit(node)
-        if returned is None:
+        pass
+
+    def visit_(self, node):
+        target = self.visit(node)
+        if target is None:
             raise NotImplementedError(
                 f"Transformation rule for {node} is not implemented.")
         else:
-            return returned
+            return target
