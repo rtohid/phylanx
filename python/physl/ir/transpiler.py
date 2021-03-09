@@ -12,23 +12,25 @@ import ast
 import inspect
 
 from abc import ABC, abstractmethod
+from types import FunctionType
 from typing import Any, List
 
-from physl.control import Task
 from physl.ir.nodes import Argument, Attribute, Buffer, Expr
 from physl.ir.nodes import Function, FunctionCall, Statement, Variable
 from physl.ir.symbol_table import FnTable, Namespace, SymbolTable, TaskTable
 
 
-class Transpiler(ABC, ast.NodeVisitor):
-    def __init__(self, task: Task) -> None:
-        self.task = task
-        self.fn = task.fn
+class IRBuilder(ast.NodeTransformer):
+    def __init__(self, fn: FunctionType) -> None:
+        self.fn = fn
+
+        py_src = inspect.getsource(fn)
+        py_ast = ast.parse(py_src)
         # self.symbol_table = TaskTable(self.task)
-        self.src = self.transpile(task.py_ast)
+        self.src = self.build(py_ast)
 
     @abstractmethod
-    def transpile(self, node):
+    def build(self, node):
         ...
 
     @abstractmethod
@@ -38,18 +40,10 @@ class Transpiler(ABC, ast.NodeVisitor):
     def get_src(self):
         return str(self.src)
 
-    def walk(self, node):
-        target = self.visit(node)
-        if target is None:
-            raise NotImplementedError(
-                f"Transformation rule for {node} is not implemented.")
-        else:
-            return target
 
-
-class IR(Transpiler):
-    def transpile(self, node):
-        self.target = super().walk(node)
+class IR(IRBuilder):
+    def build(self, node):
+        self.target = super().visit(node)
 
     def visit_arg(self, node: ast.arg) -> Any:
         namespace = Namespace.get_namespace()
@@ -57,21 +51,22 @@ class IR(Transpiler):
         return PhyArg(arg_name, namespace, node.col_offset, node.col_offset)
 
     def visit_arguments(self, node: ast.arguments) -> Any:
-        args = [self.walk(n) for n in node.args]
-        return args
+        args = [self.visit(n) for n in node.args]
+        setattr(node, 'ir', args)
+        return node
 
     def visit_Assign(self, node: ast.Assign) -> Any:
-        targets = [self.walk(target) for target in node.targets]
-        value = self.walk(node.value)
-
-        return Statement(targets, value)
+        targets = [self.visit(target) for target in node.targets]
+        value = self.visit(node.value)
+        setattr(node, 'ir', Statement(targets, value))
+        return node
 
     def visit_Call(self, node: ast.Call) -> Any:
-        fn_name = self.walk(node.func)
-        fn_args = [self.walk(arg) for arg in node.args]
+        fn_name = self.visit(node.func)
+        fn_args = [self.visit(arg) for arg in node.args]
         namespace = Namespace.get_namespace()
         return FunctionCall(fn_name, fn_args, namespace, node.lineno,
-                         node.col_offset)
+                            node.col_offset)
 
     def visit_Compare(self, node: ast.Compare) -> Any:
         ops_ = {
@@ -86,8 +81,8 @@ class IR(Transpiler):
             ast.In: NotImplementedError(f"Phylanx: {ast.In}"),
             ast.NotIn: NotImplementedError(f"Phylanx: {ast.NotIn}")
         }
-        left = self.walk(node.left)
-        comparators = [self.walk(c) for c in node.comparators]
+        left = self.visit(node.left)
+        comparators = [self.visit(c) for c in node.comparators]
         ops = [ops_[type(op)] for op in node.ops]
         for op in ops:
             if not isinstance(op, str):
@@ -104,29 +99,31 @@ class IR(Transpiler):
         return node.value
 
     def visit_Expr(self, node: ast.Expr) -> Any:
-        return self.walk(node.value)
+        return self.visit(node.value)
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> Any:
         fn_name = node.name
 
         with Namespace(fn_name) as ns:
             fn = Function(fn_name, ns, node.lineno, node.col_offset)
-            args = self.walk(node.args)
-            for arg in args:
+            args = self.visit(node.args)
+            for arg in args.ir:
                 fn.add_arg(arg)
 
-            for statement in node.body:
-                phy_statement = self.walk(statement)
-                fn.add_statement(phy_statement)
+            for stmnt in node.body:
+                statement = self.visit(stmnt)
+                fn.add_statement(statement)
                 if isinstance(node.body, ast.Return):
-                    fn.add_return(phy_statement)
+                    fn.add_return(statement)
 
-        return fn
+        setattr(node, 'ir', fn)
+
+        return node
 
     def visit_If(self, node: ast.If) -> Any:
-        predicate = self.walk(node.test)
-        body = [self.walk(b) for b in node.body]
-        orelse = [self.walk(o) for o in node.orelse]
+        predicate = self.visit(node.test)
+        body = [self.visit(b) for b in node.body]
+        orelse = [self.visit(o) for o in node.orelse]
 
         return PhyIf(predicate, body, orelse)
 
@@ -135,17 +132,17 @@ class IR(Transpiler):
         module_name = "__phy_task+" + file_name
 
         with Namespace(module_name):
-            return self.walk(node.body[0])
+            setattr(node, 'ir', self.visit(node.body[0]))
+            return node
 
     def visit_Name(self, node: ast.Name) -> Any:
-        return Variable(node.id, Namespace.get_namespace(), node.lineno,
-                        node.col_offset)
+        ir = Variable(node.id, Namespace.get_namespace(), node.lineno,
+                      node.col_offset)
+        setattr(node, 'ir', ir)
+        return node
 
     def visit_Return(self, node: ast.Return) -> Any:
-        return self.walk(node.value)
+        return self.visit(node.value)
 
     def __str__(self) -> str:
         return self.target.gen_code()
-
-    def __call__(self, *args: Any, **kwargs: Any) -> Any:
-        return self.task(*args, **kwargs)

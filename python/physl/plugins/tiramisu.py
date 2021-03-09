@@ -15,13 +15,10 @@ from collections import OrderedDict, defaultdict
 from typing import Any, Callable, List, Union
 
 from physl.ir.symbol_table import Namespace, SymbolTable
-from physl.ir.transpiler import IR, Transpiler
+from physl.ir.transpiler import IR, IRBuilder
 # from pytiramisu import buffer, computation, constant, expr, function
 # from pytiramisu import init_physl, input, var
 # from pytiramisu import uint32_expr
-
-
-
 
 
 class Index:
@@ -268,7 +265,7 @@ class Var:
                 self.body[self.id] = statement.gen_code()
 
 
-class PolytopeTranspiler(Transpiler):
+class PolytopeTranspiler(IRBuilder):
     def transpile(self, node):
         self.target = super().walk(node)
 

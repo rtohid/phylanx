@@ -27,11 +27,9 @@ class Task:
     def __init__(self, fn: FunctionType) -> None:
 
         self.fn = fn
+        self.name = fn.__name__
         self.dtype = None
         self.id = self.fn.__hash__()
-
-        self.py_src = inspect.getsource(fn)
-        self.py_ast = ast.parse(self.py_src)
 
         self.profile = Profile()
 

@@ -18,7 +18,7 @@ from physl.plugins.phylanx import PhySL
 from physl.plugins.tiramisu import Polytope
 
 
-class Decorator(ABC):
+class Transformer(ABC):
     def __init__(self, fn: Union[FunctionType, Task]) -> None:
         if isinstance(fn, FunctionType):
             self.task: Task = Task(fn)
@@ -28,7 +28,7 @@ class Decorator(ABC):
             raise TypeError
 
 
-class Phylanx(Decorator):
+class Phylanx(Transformer):
     def __init__(self,
                  fn: Union[FunctionType, Task],
                  debug=None,
@@ -43,10 +43,9 @@ class Phylanx(Decorator):
         return self.physl(*args, **kwargs)
 
 
-class Polyhedral(Decorator):
+class Polyhedral:
     def __init__(self, fn: Union[FunctionType, Task]) -> None:
-        super().__init__(fn)
-        self.pytiramisu: Polytope = Polytope(self.task)
+        self.pytiramisu: Polytope = Polytope(fn)
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
         return self.pytiramisu(*args, **kwargs)

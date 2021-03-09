@@ -14,7 +14,7 @@ import inspect
 from abc import ABC
 from typing import Any, List
 
-from physl.ir.transpiler import Transpiler
+from physl.ir.transpiler import IRBuilder
 from physl.ir.symbol_table import Namespace, SymbolTable
 
 
@@ -195,7 +195,7 @@ class PhyStatement:
         return
 
 
-class PhylanxTranspiler(Transpiler):
+class PhylanxTranspiler(IRBuilder):
     def transpile(self, node):
         self.target = super().walk(node)
 

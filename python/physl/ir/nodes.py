@@ -116,24 +116,10 @@ class Buffer(Variable):
         return self_ == other_
 
 
-
 class PhyControl:
     def __init__(self, predicate, body):
         self.predicate = None
         self.body = list()
-
-
-class PhyIf(PhyControl, Expr):
-    def __init__(self, predicate, body, orelse):
-        super().__init__(predicate, body)
-        self.else_block = orelse
-
-
-class PhyFor(PhyControl, Expr):
-    def __init__(self):
-        super().__init__()
-        self.init = list()
-        self.iter = None
 
 
 class Function(Expr):
@@ -194,6 +180,3 @@ class Statement:
 
     def gen_code(self):
         return
-
-class Variable:
-    pass

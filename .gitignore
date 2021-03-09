@@ -19,3 +19,4 @@ cmake-build-*
 phylanx.egg-info/
 /tests/unit/execution_tree/images
 /tests/unit/plugins/controls/images
+scratchpad/
